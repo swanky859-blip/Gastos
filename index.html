@@ -101,6 +101,7 @@ select{width:100%;border:1px solid var(--bd);background:var(--bg);color:var(--tx
     <select id="rep"><option value="0">Só uma vez</option><option value="p">Parcelado</option><option value="f">Gasto fixo (próximos 12 meses)</option></select>
     <input class="t" id="nrep" type="number" min="2" max="48" value="2" placeholder="Nº de parcelas" style="display:none;margin-top:6px">
   </div>
+  <button class="act" id="edtl" style="margin-top:8px">Editar pessoas e cartões</button>
   <div class="lbl">Observação (opcional)</div><input class="t" id="note" placeholder="ex.: almoço, salário…" autocomplete="off">
   <div class="lbl">Data</div><input class="t" id="date" type="date">
   <button class="save" id="save">Salvar</button><div class="msg" id="msg"></div>
@@ -130,19 +131,44 @@ var fmt=function(n){return n.toLocaleString("pt-BR",{style:"currency",currency:"
 function icon(c){var L=CATS.concat(ICATS);for(var i=0;i<L.length;i++)if(L[i][0]===c)return L[i][1];return"📦"}
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
 function addM(d,i){var a=d.split("-").map(Number),n=new Date(a[0],a[1]-1+i,1),last=new Date(n.getFullYear(),n.getMonth()+1,0).getDate();n.setDate(Math.min(a[2],last));return ds(n)}
-function addChip(box,name,list,cur,set,extra){
-  var b=el("button","chip"+(extra||"")+(cur===name?" on":""),name);b.onclick=function(){set(name);chips()};box.appendChild(b)}
-function plus(box,label,list,set){
+var edit=false,reopen="";
+function stamp(k){k==="p"?S.pu=Date.now():S.cu=Date.now()}
+function rm(list,name,kind){
+  if(!confirm("Remover "+name+" da lista? Os lançamentos antigos continuam salvos."))return;
+  var i=list.indexOf(name);if(i>=0)list.splice(i,1);stamp(kind);
+  if(kind==="p"&&who===name)who="Eu";
+  if(kind==="c"&&card===name)card=list[0]||"";
+  save();chips();sync()}
+function addChip(box,name,list,cur,set,extra,kind){
+  var locked=kind==="p"&&name==="Eu";
+  var b=el("button","chip"+(extra||"")+(!edit&&cur===name?" on":""),name+(edit&&!locked?"  ✕":""));
+  b.onclick=function(){if(edit){if(!locked)rm(list,name,kind)}else{set(name);chips()}};box.appendChild(b)}
+function plus(box,label,list,set,kind){
   var add=el("button","chip",label);
-  add.onclick=function(){var i=el("input","t");i.placeholder="Nome e Enter";i.style.cssText="width:140px;padding:7px 10px";
-    i.onkeydown=function(e){if(e.key==="Enter"){var n=i.value.trim();if(n&&list.indexOf(n)<0){list.push(n);set(n);save()}chips()}};
-    box.replaceChild(i,add);i.focus()};box.appendChild(add)}
+  add.onclick=function(){
+    var row=el("div");row.style.cssText="display:flex;gap:6px;width:100%;align-items:center";
+    var i=el("input","t");i.placeholder="Nome";i.style.cssText="flex:1;padding:8px 10px";
+    var ok=el("button","chip on","Adicionar"),dn=el("button","chip","Pronto");
+    function go(){var n=i.value.trim();if(!n)return;
+      if(list.indexOf(n)<0){list.push(n);stamp(kind);save();sync()}
+      set(n);reopen=kind;chips()}
+    i.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();go()}};
+    ok.onclick=go;dn.onclick=function(){reopen="";chips()};
+    row.appendChild(i);row.appendChild(ok);row.appendChild(dn);
+    box.replaceChild(row,add);i.focus()};
+  box.appendChild(add);
+  if(reopen===kind){reopen="";add.onclick()}}
 function chips(){
   var c=$("cats");c.innerHTML="";
   (mode==="out"?CATS:ICATS).forEach(function(k){var b=el("button","chip"+(cat===k[0]?" on":""),k[1]+" "+k[0]);b.onclick=function(){cat=k[0];chips()};c.appendChild(b)});
-  var w=$("who");w.innerHTML="";S.people.forEach(function(n){addChip(w,n,S.people,who,function(v){who=v},n!=="Eu"?" p":"")});plus(w,"+ pessoa",S.people,function(v){who=v});
-  var k=$("cards");k.innerHTML="";S.cards.forEach(function(n){addChip(k,n,S.cards,card,function(v){card=v})});plus(k,"+ cartão",S.cards,function(v){card=v});
+  var w=$("who");w.innerHTML="";
+  S.people.forEach(function(n){addChip(w,n,S.people,who,function(v){who=v},n!=="Eu"?" p":"","p")});
+  plus(w,"+ pessoa",S.people,function(v){who=v},"p");
+  var k=$("cards");k.innerHTML="";
+  S.cards.forEach(function(n){addChip(k,n,S.cards,card,function(v){card=v},"","c")});
+  plus(k,"+ cartão",S.cards,function(v){card=v},"c");
   $("rbox").style.display=who!=="Eu"?"flex":"none";
+  $("edtl").textContent=edit?"Concluir edição":"Editar pessoas e cartões";
 }
 function setMode(m){mode=m;cat=m==="out"?S.lastCat:"Salário";$("mout").className="chip outt"+(m==="out"?" on":"");$("min").className="chip inn"+(m==="in"?" on":"");$("outf").style.display=m==="out"?"block":"none";chips()}
 $("mout").onclick=function(){setMode("out")};$("min").onclick=function(){setMode("in")};
@@ -228,12 +254,13 @@ function doSync(){
   if(!navigator.onLine){st("Sem internet. Sincroniza quando voltar.");return}
   busy=true;st("Sincronizando…");
   var ch=S.tx.filter(function(t){return t.u>S.pushed}),mx=S.pushed;ch.forEach(function(t){if(t.u>mx)mx=t.u});
-  fetch(S.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:S.key,since:S.since,changes:ch,people:S.people,cards:S.cards})})
+  fetch(S.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:S.key,since:S.since,changes:ch,cfg:{p:{l:S.people,u:S.pu||0},c:{l:S.cards,u:S.cu||0}}})})
   .then(function(r){return r.json()}).then(function(d){
     if(d.error)throw new Error(d.error==="chave"?"chave incorreta":d.error);
     var m={};S.tx.forEach(function(t,i){m[t.id]=i});
     d.rows.forEach(function(r){var i=m[r.id];if(i==null){S.tx.push(r);m[r.id]=S.tx.length-1}else if(S.tx[i].u<r.u)S.tx[i]=r});
-    union(S.people,d.people);union(S.cards,d.cards);
+    if(d.cfg){[["p","people","pu"],["c","cards","cu"]].forEach(function(z){var sv=d.cfg[z[0]];if(!sv)return;var mu=S[z[2]]||0;
+      if(sv.u>mu){S[z[1]]=sv.l.slice();S[z[2]]=sv.u}else if(sv.u===mu)union(S[z[1]],sv.l)})}
     S.since=d.now;S.pushed=Math.max(S.pushed,mx);save();chips();render();
     st("Sincronizado às "+new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}));
   }).catch(function(e){st("Erro ao sincronizar: "+e.message,1)}).then(function(){busy=false;if(again){again=false;doSync()}});
@@ -244,6 +271,7 @@ $("ssave").onclick=function(){var u=$("surl").value.trim(),k=$("skey").value.tri
   if(S.url!==u||S.key!==k){S.since=0;S.pushed=0}S.url=u;S.key=k;save();doSync()};
 document.addEventListener("visibilitychange",function(){if(!document.hidden)sync()});
 window.addEventListener("online",sync);
+$("edtl").onclick=function(){edit=!edit;chips()};
 mig();save();
 if(!S.url){document.querySelector("details").open=true;st("Sincronização desligada. Configure em Backup e planilha.")}
 chips();render();if(S.url)sync();
