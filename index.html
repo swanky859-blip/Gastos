@@ -76,6 +76,7 @@ select{width:100%;border:1px solid var(--bd);background:var(--bg);color:var(--tx
 <div class="top"><button id="prev" aria-label="Mês anterior">‹</button><b id="mlabel"></b><button id="next" aria-label="Próximo mês">›</button></div>
 <div class="card">
   <div class="saldo"><small id="slbl">Saldo do mês</small><div class="big" id="saldo">R$ 0,00</div></div>
+  <div class="two" style="margin-bottom:8px"><div class="box" style="background:var(--bg)"><small>Veio do mês anterior</small><b id="tprev">R$ 0,00</b></div><div class="box" style="background:var(--bg)"><small>Resultado do mês</small><b id="tmov">R$ 0,00</b></div></div>
   <div class="three">
     <div class="box"><small>Entradas</small><b id="tin" class="pos">R$ 0</b></div>
     <div class="box"><small>Saídas</small><b id="tout" class="neg">R$ 0</b></div>
@@ -118,7 +119,7 @@ select{width:100%;border:1px solid var(--bd);background:var(--bg);color:var(--tx
   <div class="lbl">Os dados ficam salvos neste navegador. Copie o backup de vez em quando.</div></div></details>
 <script>
 var CATS=[["Mercado","🛒"],["Comida","🍽️"],["Transporte","🚗"],["Casa","🏠"],["Contas","🧾"],["Saúde","💊"],["Lazer","🎉"],["Outros","📦"]];
-var ICATS=[["Salário","💼"],["Extra","✨"],["Reembolso","↩️"],["Outros","📥"]];
+var ICATS=[["Salário","💼"],["Extra","✨"],["Reembolso","↩️"],["Outros","📥"],["Saldo inicial","🏁"]];
 var KEY="meus-gastos-v1";
 var S={url:"",key:"",since:0,pushed:0,tx:[],people:["Eu","Mãe","Pai"],cards:["Débito/Pix","Cartão 1"],lastCat:"Mercado",lastWho:"Eu",lastCard:"Débito/Pix"};
 try{var r=localStorage.getItem(KEY);if(r){var p=JSON.parse(r);if(p&&p.tx)S=Object.assign(S,p)}}catch(e){}
@@ -188,9 +189,12 @@ function render(){
     if(t.t==="in"){tin+=t.v;return}
     tout+=t.v;t.w==="Eu"?me+=t.v:rel+=t.v;bc[t.c]=(bc[t.c]||0)+t.v;var k=t.k||"Sem cartão";bk[k]=(bk[k]||0)+t.v;
     if(t.r){t.p?got+=t.v:rec+=t.v}});
-  var sd=tin+got-tout;
+  var prev=0;S.tx.forEach(function(t){if(t.del||t.d.slice(0,7)>=ym)return;prev+=t.t==="in"?t.v:(t.r&&t.p?0:-t.v)});
+  var mov=tin+got-tout,sd=prev+mov;
+  $("tprev").textContent=fmt(prev);$("tprev").className=prev>=0?"pos":"neg";
+  $("tmov").textContent=fmt(mov);$("tmov").className=mov>=0?"pos":"neg";
   $("saldo").textContent=fmt(sd);$("saldo").className="big "+(sd>=0?"pos":"neg");
-  $("slbl").textContent=sd>=0?"Sobrou no mês":"Faltou no mês";
+  $("slbl").textContent=sd>=0?"Sobrou (saldo acumulado)":"Faltou (saldo acumulado)";
   $("tin").textContent=fmt(tin);$("tout").textContent=fmt(tout);$("trec").textContent=fmt(rec);$("tme").textContent=fmt(me);$("trel").textContent=fmt(rel);
   sumRows($("bycard"),bk,tout);
   var tc=el("div","row");tc.appendChild(el("b",null,"Total de todos os cartões"));tc.appendChild(el("b",null,fmt(tout)));$("bycard").appendChild(tc);
