@@ -69,10 +69,26 @@ textarea{height:90px;font-size:12px}
 select{width:100%;border:1px solid var(--bd);background:var(--bg);color:var(--tx);border-radius:12px;padding:11px;font-size:15px}
 .chk{display:flex;gap:8px;align-items:center;font-size:14px;margin-top:10px}
 .act{border:0;background:transparent;color:var(--mut);font-size:12px;padding:4px 8px 0 0;text-decoration:underline}.act.sure{color:var(--red)}
+.streak{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:9px 12px;margin-bottom:10px;font-size:14px;font-weight:600}
+.streak .dots{letter-spacing:3px;color:var(--ac);font-size:13px}.streak small{color:var(--mut);font-weight:400}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,40px);background:var(--tx);color:var(--bg);padding:11px 16px;border-radius:24px;font-size:14px;opacity:0;transition:.3s;pointer-events:none;z-index:9;max-width:90%;text-align:center}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.fl{position:fixed;bottom:90px;font-size:22px;animation:fl 1.5s ease-out forwards;pointer-events:none;z-index:8}
+@keyframes fl{to{transform:translateY(-220px) rotate(25deg);opacity:0}}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px}
+.daily{display:flex;align-items:flex-end;gap:2px;height:80px;margin-top:6px}
+.db{flex:1;background:var(--bd);border-radius:3px 3px 0 0;min-height:2px;cursor:pointer}.db.has{background:var(--ac)}
+.months{display:flex;gap:6px;height:112px;margin-top:6px}
+.mc{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;cursor:pointer}
+.mb{display:flex;align-items:flex-end;gap:2px;height:92px;width:100%;justify-content:center}
+.mb .b{width:42%;border-radius:3px 3px 0 0;min-height:2px}.b.in{background:var(--ac)}.b.out{background:var(--red)}
+.mc small{font-size:11px;color:var(--mut);margin-top:3px}
+.bar i{transition:width .4s}
 </style>
 </head>
 <body>
 <div class="msg" id="sync" style="text-align:center;color:var(--mut)"></div>
+<div id="streak" class="streak"></div>
 <div class="top"><button id="prev" aria-label="Mês anterior">‹</button><b id="mlabel"></b><button id="next" aria-label="Próximo mês">›</button></div>
 <div class="card">
   <div class="saldo"><small id="slbl">Saldo do mês</small><div class="big" id="saldo">R$ 0,00</div></div>
@@ -88,6 +104,16 @@ select{width:100%;border:1px solid var(--bd);background:var(--bg);color:var(--tx
   </div>
   <div class="lbl">Por cartão (total das saídas)</div><div id="bycard"></div>
   <div class="lbl">Por categoria</div><div id="bycat"></div>
+</div>
+<div class="card" style="margin-top:12px">
+  <div class="lbl" style="margin-top:0">Limite de gastos do mês (opcional)</div>
+  <input class="t" id="lim" inputmode="decimal" placeholder="ex.: 3000">
+  <div id="limbar" style="display:none;margin-top:8px"><div class="bar" style="height:12px"><i id="limfill"></i></div><div id="limtxt" class="lbl"></div></div>
+  <div class="lbl">Para onde foi o dinheiro (toque numa fatia)</div>
+  <div id="donut" style="display:flex;justify-content:center"></div><div id="dlegend"></div>
+  <div class="lbl">Gastos por dia</div><div id="daily" class="daily"></div><div id="dcap" class="lbl"></div>
+  <div class="lbl">Entradas x saídas nos últimos 6 meses</div><div id="months" class="months"></div>
+  <div id="mcap" class="lbl">Verde entrou, vermelho saiu. Toque num mês.</div>
 </div>
 <h2>Lançar</h2>
 <div class="card">
@@ -117,6 +143,7 @@ select{width:100%;border:1px solid var(--bd);background:var(--bg);color:var(--tx
   <div class="btns"><button id="csv">Copiar para planilha (CSV)</button><button id="bkp">Copiar backup</button><button id="rst">Restaurar backup</button></div>
   <textarea id="box" placeholder="Para restaurar, cole o backup aqui e toque em Restaurar."></textarea>
   <div class="lbl">Os dados ficam salvos neste navegador. Copie o backup de vez em quando.</div></div></details>
+<div id="toast" class="toast"></div>
 <script>
 var CATS=[["Mercado","🛒"],["Comida","🍽️"],["Transporte","🚗"],["Casa","🏠"],["Contas","🧾"],["Saúde","💊"],["Lazer","🎉"],["Outros","📦"]];
 var ICATS=[["Salário","💼"],["Extra","✨"],["Reembolso","↩️"],["Outros","📥"],["Saldo inicial","🏁"]];
@@ -132,6 +159,56 @@ var fmt=function(n){return n.toLocaleString("pt-BR",{style:"currency",currency:"
 function icon(c){var L=CATS.concat(ICATS);for(var i=0;i<L.length;i++)if(L[i][0]===c)return L[i][1];return"📦"}
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
 function addM(d,i){var a=d.split("-").map(Number),n=new Date(a[0],a[1]-1+i,1),last=new Date(n.getFullYear(),n.getMonth()+1,0).getDate();n.setDate(Math.min(a[2],last));return ds(n)}
+var COL=["#0f7b5f","#c26a12","#3b6fb6","#b5446e","#7a5cc0","#2d9cae","#a39a2c","#8a8a82"];
+function anim(e,to){var from=e._v||0;e._v=to;var t0=performance.now();
+  (function f(t){var k=Math.min(1,(t-t0)/450),v=from+(to-from)*(1-Math.pow(1-k,3));e.textContent=fmt(v);if(k<1)requestAnimationFrame(f)})(t0)}
+function streak(){
+  var days={};S.tx.forEach(function(t){if(!t.del){var n=Number(t.id);if(n>1e12)days[ds(new Date(n))]=1}});
+  var d=new Date(),has=!!days[ds(d)],n=0;if(!has)d.setDate(d.getDate()-1);
+  while(days[ds(d)]){n++;d.setDate(d.getDate()-1)}
+  var dots="";for(var i=6;i>=0;i--){var x=new Date();x.setDate(x.getDate()-i);dots+=days[ds(x)]?"●":"○"}
+  return {n:n,has:has,dots:dots}}
+function showStreak(){var s=streak(),e=$("streak");e.innerHTML="";
+  e.appendChild(el("span",null,s.n>0?"🔥 "+s.n+(s.n>1?" dias seguidos":" dia"):"🌱 Comece sua sequência hoje"));
+  e.appendChild(el("span","dots",s.dots));e.appendChild(el("small",null,s.has?"hoje ✓":"falta lançar hoje"))}
+function toast(msg,em){var t=$("toast");t.textContent=msg;t.className="toast show";clearTimeout(t._h);t._h=setTimeout(function(){t.className="toast"},2400);
+  for(var i=0;i<10;i++){var f=el("span","fl",em[i%em.length]);f.style.left=(12+Math.random()*76)+"%";f.style.animationDelay=(i*60)+"ms";document.body.appendChild(f);setTimeout(function(x){x.remove()},1900,f)}}
+var MSG=["Anotado! Seu eu do fim do mês agradece 👏","Boa! Mais um registro no controle","Tudo em dia ✨","Registrado. Continue assim!"];
+function celebrate(){var s=streak(),m=mode==="in"?"Entrada registrada! 💰":MSG[Math.floor(Math.random()*MSG.length)];
+  if([3,7,14,30,60,100].indexOf(s.n)>=0)m="🏆 "+s.n+" dias seguidos lançando!";else if(s.n>1)m+="  🔥 "+s.n;
+  toast(m,mode==="in"?["💰","✨","🎉"]:["✨","💸","⭐"])}
+function mk(tag,at,st){var e=document.createElementNS("http://www.w3.org/2000/svg",tag);for(var k in at)e.setAttribute(k,at[k]);if(st)e.style.cssText=st;return e}
+function charts(items,tout,bc){
+  var lim=S.limit||0,lb=$("limbar");
+  if(lim>0){var pc=tout/lim*100;lb.style.display="block";$("limfill").style.width=Math.min(100,pc)+"%";$("limfill").style.background=pc<70?"var(--ac)":pc<100?"var(--par)":"var(--red)";
+    $("limtxt").textContent=pc<100?"Usou "+Math.round(pc)+"% do limite. Restam "+fmt(lim-tout):"Passou "+fmt(tout-lim)+" do limite do mês"}else lb.style.display="none";
+  var ks=Object.keys(bc).sort(function(a,b){return bc[b]-bc[a]}),dn=$("donut"),lg=$("dlegend");dn.innerHTML="";lg.innerHTML="";
+  if(!ks.length){dn.appendChild(el("div","empty","Sem gastos neste mês"))}
+  else{
+    var svg=mk("svg",{viewBox:"0 0 42 42"},"width:180px;height:180px;transform:rotate(0deg)");
+    svg.appendChild(mk("circle",{cx:21,cy:21,r:15.9155,fill:"none","stroke-width":5},"stroke:var(--bd)"));
+    var t1=mk("text",{x:21,y:20,"text-anchor":"middle","font-size":3},"fill:var(--mut)"),t2=mk("text",{x:21,y:25,"text-anchor":"middle","font-size":4,"font-weight":700},"fill:var(--tx)");
+    function sel(k){t1.textContent=k?icon(k)+" "+k:"Saídas";t2.textContent=fmt(k?bc[k]:tout)}
+    var off=25;
+    ks.forEach(function(k,i){var p=bc[k]/tout*100,c=COL[i%COL.length];
+      var a=mk("circle",{cx:21,cy:21,r:15.9155,fill:"none","stroke-width":5,"stroke-dasharray":p+" "+(100-p),"stroke-dashoffset":off},"stroke:"+c+";cursor:pointer");off-=p;
+      a.onclick=function(){sel(k)};svg.appendChild(a);
+      var r=el("div","row"),l=el("span"),d=el("i","dot");d.style.background=c;l.appendChild(d);l.appendChild(document.createTextNode(icon(k)+" "+k));
+      r.appendChild(l);r.appendChild(el("b",null,Math.round(p)+"%"));r.style.cursor="pointer";r.onclick=function(){sel(k)};lg.appendChild(r)});
+    svg.appendChild(t1);svg.appendChild(t2);sel(null);dn.appendChild(svg)}
+  var dd=$("daily");dd.innerHTML="";var nd=new Date(+ym.slice(0,4),+ym.slice(5,7),0).getDate(),days=[],mx=0;
+  for(var i=0;i<nd;i++)days.push(0);
+  items.forEach(function(t){if(t.t!=="in")days[+t.d.slice(8,10)-1]+=t.v});days.forEach(function(v){if(v>mx)mx=v});
+  days.forEach(function(v,i){var b=el("div","db"+(v?" has":""));b.style.height=(v&&mx?Math.max(v/mx*100,6):2)+"%";b.onclick=function(){$("dcap").textContent="Dia "+(i+1)+": "+fmt(v)};dd.appendChild(b)});
+  $("dcap").textContent=mx?"Toque numa barra para ver o valor do dia":"Sem gastos neste mês";
+  var mm=$("months");mm.innerHTML="";var ms=[],agg={},m2=0;
+  for(var j=5;j>=0;j--){var q=addM(ym+"-01",-j).slice(0,7);ms.push(q);agg[q]={i:0,o:0}}
+  S.tx.forEach(function(t){if(t.del)return;var q=t.d.slice(0,7);if(agg[q]){t.t==="in"?agg[q].i+=t.v:agg[q].o+=t.v}});
+  ms.forEach(function(q){m2=Math.max(m2,agg[q].i,agg[q].o)});
+  ms.forEach(function(q){var c=el("div","mc"),bars=el("div","mb"),bi=el("div","b in"),bo=el("div","b out");
+    bi.style.height=(m2?agg[q].i/m2*100:0)+"%";bo.style.height=(m2?agg[q].o/m2*100:0)+"%";bars.appendChild(bi);bars.appendChild(bo);c.appendChild(bars);
+    var nm=new Date(q+"-15T12:00:00").toLocaleDateString("pt-BR",{month:"short"}).replace(".","");c.appendChild(el("small",null,nm));
+    c.onclick=function(){$("mcap").textContent=nm+": entrou "+fmt(agg[q].i)+" · saiu "+fmt(agg[q].o)};mm.appendChild(c)})}
 var edit=false,reopen="";
 function stamp(k){k==="p"?S.pu=Date.now():S.cu=Date.now()}
 function rm(list,name,kind){
@@ -193,12 +270,12 @@ function render(){
   var mov=tin+got-tout,sd=prev+mov;
   $("tprev").textContent=fmt(prev);$("tprev").className=prev>=0?"pos":"neg";
   $("tmov").textContent=fmt(mov);$("tmov").className=mov>=0?"pos":"neg";
-  $("saldo").textContent=fmt(sd);$("saldo").className="big "+(sd>=0?"pos":"neg");
+  anim($("saldo"),sd);$("saldo").className="big "+(sd>=0?"pos":"neg");
   $("slbl").textContent=sd>=0?"Sobrou (saldo acumulado)":"Faltou (saldo acumulado)";
   $("tin").textContent=fmt(tin);$("tout").textContent=fmt(tout);$("trec").textContent=fmt(rec);$("tme").textContent=fmt(me);$("trel").textContent=fmt(rel);
   sumRows($("bycard"),bk,tout);
   var tc=el("div","row");tc.appendChild(el("b",null,"Total de todos os cartões"));tc.appendChild(el("b",null,fmt(tout)));$("bycard").appendChild(tc);
-  sumRows($("bycat"),bc,tout);
+  sumRows($("bycat"),bc,tout);charts(items,tout,bc);showStreak();
   var L=$("list");L.innerHTML="";
   if(!items.length){L.appendChild(el("div","empty","Nada lançado neste mês ainda."));return}
   var last="";
@@ -234,7 +311,7 @@ $("save").onclick=function(){
     S.lastCat=cat;S.lastWho=who;S.lastCard=card}
   save();$("v").value="";$("note").value="";$("rep").value="0";$("nrep").style.display="none";$("reimb").checked=false;
   ym=dt.slice(0,7);$("msg").style.color="var(--ac)";$("msg").textContent="Salvo ✓";setTimeout(function(){$("msg").textContent=""},1800);
-  render();$("v").focus();sync()};
+  render();celebrate();$("v").focus();sync()};
 
 function out(txt,ok){var b=$("box");b.value=txt;b.select();
   try{navigator.clipboard.writeText(txt).then(function(){alert(ok)},function(){alert("Selecionei o texto, copie manualmente.")})}catch(e){alert("Selecionei o texto, copie manualmente.")}}
@@ -275,6 +352,8 @@ $("ssave").onclick=function(){var u=$("surl").value.trim(),k=$("skey").value.tri
   if(S.url!==u||S.key!==k){S.since=0;S.pushed=0}S.url=u;S.key=k;save();doSync()};
 document.addEventListener("visibilitychange",function(){if(!document.hidden)sync()});
 window.addEventListener("online",sync);
+$("lim").value=S.limit||"";
+$("lim").onchange=function(){var v=parseFloat(this.value.replace(/\./g,"").replace(",","."));S.limit=v>0?v:0;save();render()};
 $("edtl").onclick=function(){edit=!edit;chips()};
 mig();save();
 if(!S.url){document.querySelector("details").open=true;st("Sincronização desligada. Configure em Backup e planilha.")}
